@@ -1,6 +1,8 @@
 package issues
 
-import "fmt"
+import (
+	"fmt"
+)
 
 // Collector represents a sanitizer issue container.
 type Collector struct {
@@ -42,6 +44,17 @@ func (c *Collector) AddSubCode(code ID, section, group string, args ...interface
 	c.addIssue(section, New(group, co.Severity, co.Format(code, args...)))
 }
 
+// AddSubCodeWithSkipCheck adds a sub error code if the code is not contained in skipCodes.
+func (c *Collector) AddSubCodeWithSkipCheck(skipCodes map[ID]struct{}, code ID, section, group string, args ...interface{}) {
+	if codeIsNotSkipped(skipCodes, code) {
+		co, ok := c.codes.Glossary[code]
+		if !ok {
+			panic(fmt.Sprintf("No code with ID %d", code))
+		}
+		c.addIssue(section, New(group, co.Severity, co.Format(code, args...)))
+	}
+}
+
 // AddCode add an error code.
 func (c *Collector) AddCode(code ID, section string, args ...interface{}) {
 	co, ok := c.codes.Glossary[code]
@@ -49,6 +62,17 @@ func (c *Collector) AddCode(code ID, section string, args ...interface{}) {
 		panic(fmt.Sprintf("No code with ID %d", code))
 	}
 	c.addIssue(section, New(Root, co.Severity, co.Format(code, args...)))
+}
+
+// AddCode add an error code if code is not contained in skipCodes.
+func (c *Collector) AddCodeWithSkipCheck(skipCodes map[ID]struct{}, code ID, section string, args ...interface{}) {
+	if codeIsNotSkipped(skipCodes, code) {
+		co, ok := c.codes.Glossary[code]
+		if !ok {
+			panic(fmt.Sprintf("No code with ID %d", code))
+		}
+		c.addIssue(section, New(Root, co.Severity, co.Format(code, args...)))
+	}
 }
 
 // AddErr adds a collection of errors.
@@ -65,3 +89,13 @@ func (c *Collector) addIssue(res string, concerns ...Issue) {
 	}
 	c.outcomes[res] = append(c.outcomes[res], concerns...)
 }
+
+func codeIsNotSkipped(skipCodes map[ID]struct{}, code ID) bool {
+	if len(skipCodes) == 0 {
+		return true
+	}
+	_, found := skipCodes[code]
+
+	return !found
+}
+

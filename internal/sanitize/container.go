@@ -3,9 +3,11 @@ package sanitize
 import (
 	"strings"
 
+	"github.com/derailed/popeye/internal/annotation_config"
 	"github.com/derailed/popeye/internal/k8s"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
 )
 
@@ -32,45 +34,47 @@ func NewContainer(fqn string, c LimitCollector) *Container {
 }
 
 // Lint a Container.
-func (c *Container) sanitize(co v1.Container, checkProbes bool) {
-	c.checkImageTags(co.Name, co.Image)
-	c.checkResources(co)
+func (c *Container) sanitize(meta *metav1.ObjectMeta, co v1.Container, checkProbes bool) {
+	skipCodes := annotation_config.NewSkipAnnotationConfig(meta)
+
+	c.checkImageTags(skipCodes, co.Name, co.Image)
+	c.checkResources(skipCodes, co)
 	if checkProbes {
-		c.checkProbes(co)
+		c.checkProbes(skipCodes, co)
 	}
-	c.checkNamedPorts(co)
+	c.checkNamedPorts(skipCodes, co)
 }
 
-func (c *Container) checkImageTags(name, image string) {
+func (c *Container) checkImageTags(skipCodes annotation_config.SkipAnnotationConfig, name, image string) {
 	tokens := strings.Split(image, ":")
 	if len(tokens) < 2 {
-		c.AddSubCode(100, c.fqn, name)
+		c.AddSubCodeWithSkipCheck(skipCodes,100, c.fqn, name)
 		return
 	}
 
 	if tokens[1] == imageTagLatest {
-		c.AddSubCode(101, c.fqn, name)
+		c.AddSubCodeWithSkipCheck(skipCodes, 101, c.fqn, name)
 	}
 }
 
-func (c *Container) checkProbes(co v1.Container) {
-	if co.LivenessProbe == nil && co.ReadinessProbe == nil {
-		c.AddSubCode(102, c.fqn, co.Name)
+func (c *Container) checkProbes(skipCodes annotation_config.SkipAnnotationConfig, co v1.Container) {
+	if (co.LivenessProbe == nil && co.ReadinessProbe == nil) {
+		c.AddSubCodeWithSkipCheck(skipCodes, 102, c.fqn, co.Name)
 		return
 	}
 
 	if co.LivenessProbe == nil {
-		c.AddSubCode(103, c.fqn, co.Name)
+		c.AddSubCodeWithSkipCheck(skipCodes, 103, c.fqn, co.Name)
 	}
-	c.checkNamedProbe(co.Name, co.LivenessProbe, true)
+	c.checkNamedProbe(skipCodes, co.Name, co.LivenessProbe, true)
 
-	if co.ReadinessProbe == nil {
-		c.AddSubCode(104, c.fqn, co.Name)
+	if co.ReadinessProbe == nil  {
+		c.AddSubCodeWithSkipCheck(skipCodes, 104, c.fqn, co.Name)
 	}
-	c.checkNamedProbe(co.Name, co.ReadinessProbe, false)
+	c.checkNamedProbe(skipCodes, co.Name, co.ReadinessProbe, false)
 }
 
-func (c *Container) checkNamedProbe(co string, p *v1.Probe, liveness bool) {
+func (c *Container) checkNamedProbe(skipCodes annotation_config.SkipAnnotationConfig, co string, p *v1.Probe, liveness bool) {
 	if p == nil || p.Handler.HTTPGet == nil {
 		return
 	}
@@ -80,25 +84,25 @@ func (c *Container) checkNamedProbe(co string, p *v1.Probe, liveness bool) {
 		kind = "Liveness"
 	}
 	if p.Handler.HTTPGet != nil && p.Handler.HTTPGet.Port.Type == intstr.Int {
-		c.AddSubCode(105, c.fqn, co, kind)
+		c.AddSubCodeWithSkipCheck(skipCodes, 105, c.fqn, co, kind)
 	}
 }
 
-func (c *Container) checkResources(co v1.Container) {
+func (c *Container) checkResources(skipCodes annotation_config.SkipAnnotationConfig, co v1.Container) {
 	if len(co.Resources.Limits) == 0 && len(co.Resources.Requests) == 0 {
-		c.AddSubCode(106, c.fqn, co.Name)
+		c.AddSubCodeWithSkipCheck(skipCodes, 106, c.fqn, co.Name)
 		return
 	}
 
 	if len(co.Resources.Requests) > 0 && len(co.Resources.Limits) == 0 {
-		c.AddSubCode(107, c.fqn, co.Name)
+		c.AddSubCodeWithSkipCheck(skipCodes, 107, c.fqn, co.Name)
 	}
 }
 
-func (c *Container) checkNamedPorts(co v1.Container) {
+func (c *Container) checkNamedPorts(skipCodes annotation_config.SkipAnnotationConfig, co v1.Container) {
 	for _, p := range co.Ports {
 		if len(p.Name) == 0 {
-			c.AddSubCode(108, c.fqn, co.Name, p.ContainerPort)
+			c.AddSubCodeWithSkipCheck(skipCodes, 108, c.fqn, co.Name, p.ContainerPort)
 		}
 	}
 }

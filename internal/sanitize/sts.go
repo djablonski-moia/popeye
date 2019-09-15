@@ -88,11 +88,11 @@ func (s *StatefulSet) checkContainers(fqn string, st *appsv1.StatefulSet) {
 
 	l := NewContainer(fqn, s)
 	for _, co := range spec.InitContainers {
-		l.sanitize(co, false)
+		l.sanitize(&st.Spec.Template.ObjectMeta, co, false)
 	}
 
 	for _, co := range spec.Containers {
-		l.sanitize(co, false)
+		l.sanitize(&st.Spec.Template.ObjectMeta, co, false)
 	}
 }
 

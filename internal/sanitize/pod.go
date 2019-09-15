@@ -3,6 +3,7 @@ package sanitize
 import (
 	"context"
 
+	"github.com/derailed/popeye/internal/annotation_config"
 	"github.com/derailed/popeye/internal/cache"
 	"github.com/derailed/popeye/internal/issues"
 	"github.com/derailed/popeye/internal/k8s"
@@ -62,7 +63,7 @@ func (p *Pod) Sanitize(ctx context.Context) error {
 		p.checkContainerStatus(fqn, po)
 		p.checkContainers(fqn, po)
 		p.checkPdb(fqn, po.ObjectMeta.Labels)
-		p.checkSecure(fqn, po.Spec)
+		p.checkSecure(fqn, po)
 		pmx, cmx := mx[fqn], k8s.ContainerMetrics{}
 		containerMetrics(fqn, pmx, cmx)
 		p.checkUtilization(fqn, po, cmx)
@@ -90,13 +91,16 @@ func (p *Pod) checkUtilization(fqn string, po *v1.Pod, cmx k8s.ContainerMetrics)
 	}
 }
 
-func (p *Pod) checkSecure(fqn string, spec v1.PodSpec) {
+func (p *Pod) checkSecure(fqn string, po *v1.Pod) {
+	skipCodes := annotation_config.NewSkipAnnotationConfig(&po.ObjectMeta)
+	spec := po.Spec
+
 	if spec.ServiceAccountName == "default" {
-		p.AddCode(300, fqn)
+		p.AddCodeWithSkipCheck(skipCodes, 300, fqn)
 	}
 
 	if spec.AutomountServiceAccountToken == nil || *spec.AutomountServiceAccountToken {
-		p.AddCode(301, fqn)
+		p.AddCodeWithSkipCheck(skipCodes, 301, fqn)
 	}
 
 	if spec.SecurityContext == nil {
@@ -104,17 +108,17 @@ func (p *Pod) checkSecure(fqn string, spec v1.PodSpec) {
 	}
 
 	if spec.SecurityContext.RunAsNonRoot == nil || !*spec.SecurityContext.RunAsNonRoot {
-		p.AddCode(302, fqn)
+		p.AddCodeWithSkipCheck(skipCodes, 302, fqn)
 	}
 }
 
 func (p *Pod) checkContainers(fqn string, po *v1.Pod) {
 	co := NewContainer(fqn, p)
 	for _, c := range po.Spec.InitContainers {
-		co.sanitize(c, false)
+		co.sanitize(&po.ObjectMeta, c, false)
 	}
 	for _, c := range po.Spec.Containers {
-		co.sanitize(c, !isPartOfJob(po))
+		co.sanitize(&po.ObjectMeta, c, !isPartOfJob(po))
 	}
 }
 

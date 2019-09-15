@@ -39,6 +39,7 @@ type (
 	Collector interface {
 		Outcome() issues.Outcome
 		AddSubCode(id issues.ID, p, s string, args ...interface{})
+		AddSubCodeWithSkipCheck(skipCodes map[issues.ID]struct{}, id issues.ID, p, s string, args ...interface{})
 	}
 
 	// PodLimiter tracks metrics limit range.
@@ -89,7 +90,7 @@ func (d *Deployment) Sanitize(ctx context.Context) error {
 		d.InitOutcome(fqn)
 		d.checkDeprecation(fqn, dp)
 		d.checkDeployment(fqn, dp)
-		d.checkContainers(fqn, dp.Spec.Template.Spec)
+		d.checkContainers(fqn, dp.Spec.Template)
 		pmx := k8s.PodsMetrics{}
 		podsMetrics(d, pmx)
 
@@ -131,13 +132,13 @@ func (d *Deployment) checkDeployment(fqn string, dp *appsv1.Deployment) {
 }
 
 // CheckContainers runs thru deployment template and checks pod configuration.
-func (d *Deployment) checkContainers(fqn string, spec v1.PodSpec) {
+func (d *Deployment) checkContainers(fqn string, spec v1.PodTemplateSpec) {
 	c := NewContainer(fqn, d)
-	for _, co := range spec.InitContainers {
-		c.sanitize(co, false)
+	for _, co := range spec.Spec.InitContainers {
+		c.sanitize(&spec.ObjectMeta, co, false)
 	}
-	for _, co := range spec.Containers {
-		c.sanitize(co, false)
+	for _, co := range spec.Spec.Containers {
+		c.sanitize(&spec.ObjectMeta, co, false)
 	}
 }
 
